@@ -26,18 +26,63 @@ cces <- read_rds("cces_initial.rds")
 **Prompt:** Take a peek at the data and try and figure out what the variables mean. You can find the codebook here: https://dataverse.harvard.edu/file.xhtml?persistentId=doi:10.7910/DVN/II2DB6/EARRB5&version=4.1 
 
 1) What is the age of oldest person who responded to this survey?
+```{r}
+cces %>%
+  arrange(desc(age)) %>%
+  select(age) %>%
+  slice(1)
+
+# The oldest person who responded to this survey was 95 years old
+
+```
+
 
 2) What proportion of females voted for Trump? 
+
+```{r}
+cces %>%
+  filter(gender == "Female") %>%
+  summarize(prop_female = sum(trump == 1)/ n())
+  
+```
 
 
 # Scene 2
 
 **Prompt:** Start by creating a logistic model using every variable to try and predict the Trump vote. Consider using `logistic_reg()`, `set_engine()`, and `fit()`. Save the model to an object named `logistic_mod` and the fit to `logistic_fit`. Feel free to refer to the code from last week or to the code in the *Primer*.
 
+```{r}
+logistic_mod <- logistic_reg() %>%
+  set_engine("glm")
+logistic_fit <- fit(logistic_mod,
+                    trump ~ gender + age +
+                    educ + race + income + party + ideology,
+                    data = cces)
+logistic_fit$fit %>%
+  tidy(conf.int = TRUE) %>%
+  select(term, estimate, conf.low, conf.high) 
+```
+
 1) Print out the model with the confidence interval and interpret the coefficient of `gender`? (Hint: use the divide-by-four rule.) Explain the association of Trump-voting with variables like `income` and `party` to your smart-but-not-mathematical boss. Why doesn't income matter?
 
-2) What is the expected vote for Dom - who is Male, 37, holds a 4-year degree (placing him in the 5 `educ` bucket), Asian, makes $77,000, with `ideology` and `party` equal to 3. (Hint: use predict().)
+The coefficient genderFemale confers an 8% decrease in likelihood to vote for Trump compared to males. 
+Dividing income into 12 groups, if we picked an individual from the 6th group and the 7th group, an individual in the 7th group is 0.04% more likely to vote for Trump.
+If you were going from group 3 to 4, there's a ~25% increase in likelihood that you would vote for Trump. 
 
+2) What is the expected vote for Dom - who is Male, 37, holds a 4-year degree (placing him in the 5 `educ` bucket), Asian, makes $77,000, with `ideology` and `party` equal to 3. (Hint: use predict().)
+```{r}
+dom <- tibble(gender = "Male",
+              age = 37,
+              educ = 5,
+              race = "Asian",
+              income = 8,
+              ideology = 3,
+              party =3)
+
+
+predict(logistic_fit, new_data = dom)
+# This predicts that Dom would not vote for Trump 
+```
 
 
 # Scene 3
@@ -48,6 +93,32 @@ cces <- read_rds("cces_initial.rds")
 
 2) Looking at the randomForest model, what does the OOB error tell us? Interpret the first row, second column of the confusion matrix, what does that 920 represent? How does 920 relate to the class.error of 0.078?
 
+```{r}
+set.seed(1005)
+tree_mod <- decision_tree() %>%
+  set_engine("rpart",
+             model = TRUE) %>%
+  set_mode("classification")
+trump_tree <- fit(tree_mod,
+                      trump ~ gender + age +
+                      educ + race + income + party + ideology,
+                      data = cces)
+trump_tree$fit %>%
+  prp(extra = "auto", varlen = 0, faclen = 0)
+
+
+forest_mod <- rand_forest(mtry = 7, trees = 50) %>%
+  set_engine("randomForest") %>%
+  set_mode("classification") 
+
+trump_forest <- fit(forest_mod,
+                    trump ~ gender + age + educ + race + income + party + ideology,
+                    data = cces)
+trump_forest
+
+# The first row and the second column represents the false positives from our model
+
+```
 
 
 # Scene 4
@@ -57,4 +128,11 @@ cces <- read_rds("cces_initial.rds")
 1) Compare the accuracy of our three models, use bind_rows() to put the three in a nice tibble. Which model appears to be the best?
 
 2) So the randomforest model appears to be the best model, how can we test that this is true? What should we worry about?
+
+```{r}
+predict(logistic_fit, new_data = cces) %>%
+  bind_cols()
+predict(trump_tree, new_data = cces)
+predict(trump_forest, new_data = cces)
+```
 
